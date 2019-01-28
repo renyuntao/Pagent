@@ -1,0 +1,99 @@
+#!/usr/bin/env perl
+# 功能:
+#   操作range表达式
+#
+# 用法:
+#   range 'expr'
+#   range --list 'expr'
+#   range --count 'expr'
+#   range --help
+#
+# 时间:
+#   2018-10-16
+    
+
+use strict;
+use warnings;
+use Getopt::Long;
+use File::Basename;
+use FindBin;
+use Hermes::Range;
+
+sub Help
+{
+	my $prog = basename($0);
+	print "Usage:\n";
+	print "\t$prog 'expr'\n";
+	print "\t$prog --list 'expr'\n";
+	print "\t$prog --count 'expr'\n";
+	print "\t$prog --help\n\n";
+	print "Options:\n";
+	print "\t--list\t Print range as a random list.\n";
+	print "\t--count\t Print number of item.\n";
+	print "\t--help\t Print help message.\n\n";
+	print "\tPrint a range expression when not use option.\n\n";
+}
+
+my $list = '';
+my $count = '';
+my $args = '';
+my $help = '';
+GetOptions("list" => \$list,
+           "count" => \$count,
+		   "help" => \$help)
+or die("Error in command line arguments\n");
+
+if($help)
+{
+	Help();
+	exit 0;
+}
+
+my $argc = @ARGV;
+if($argc == 1)
+{
+	$args = $ARGV[0];
+}
+
+# Read from STDIN if have content
+if(-p STDIN)
+{
+	while(<STDIN>)
+	{
+		chomp($_);
+		if($args eq "")
+		{
+			$args = $_;
+		}
+		else
+		{
+			$args .= ",$_";
+		}
+	}
+}
+
+if($args eq "")
+{
+	print "\n";
+	exit 0;
+}
+
+my $range = Hermes::Range->new()->load($args);
+
+if($list)
+{
+	my @list = $range->list();
+	foreach my $item (@list)
+	{
+		print "$item\n";
+	}
+}
+elsif($count)
+{
+	print $range->list() . "\n";
+}
+else
+{
+	my $rangeExp = $range->dump();
+	print "$rangeExp\n";
+}

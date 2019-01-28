@@ -1,0 +1,204 @@
+#!/usr/bin/env python3
+# Function:
+#   Run command on remote host
+#
+# Usage:
+#   __file__  -r 'hostsRange' 'COMMAND'
+#   __file__  -h
+#
+# Date:
+#   - 2019-01-24
+#     v1.0
+
+import os
+import yaml
+import socket
+import select
+import argparse
+import threading
+import datetime
+import Ren.load
+from Ren.tools import dict2yaml_noblank, Script, range2list, list2range
+from Ren.tools import Script, range2list, list2range
+from Ren.load import load
+from Ren.proxy import sign, verify
+
+
+def help(wantReturn=True):
+	usage = """ %(prog)s [--port PORT] [--parallel NUM] [--timeout TIMEOUT] -r 'rangeExpr' 'COMMAND'
+	%(prog)s -h"""
+
+	if wantReturn:
+		return usage
+	else:
+		usage = usage.replace('(prog)', '')
+		print("usage: ", end='')
+		print(usage % (Script, Script))
+
+# Run command on remote host
+def runOnRemote(hostsList, port, encryptMsg):
+	socks = []
+	for host in hostsList:
+		sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+		sock.settimeout(portCheckTimeout)
+
+		# Store ip:host key-value in dictionary
+		ip = socket.gethostbyname(host)
+		ip2hostDict[ip] = host
+
+		result = sock.connect_ex((host, port))
+		if result != 0:
+			if 'Connect Refuse' in errorCollectDict['error']:
+				errorCollectDict['error']['Connect Refuse'].append(host)
+			else:
+				errorCollectDict['error']['Connect Refuse'] = [host]
+			sock.close()
+			continue
+		socks.append(sock)
+	
+	readSockList = socks[:]
+	writeSockList = socks[:]
+
+	while socks:
+		readable, writable, exceptional = select.select(readSockList, writeSockList, [], timeout_s)
+
+		# Timeout
+		if not (readable or writable or exceptional):
+			for sock in (readSockList + writeSockList):
+				remoteIP = sock.getpeername()[0]
+				remoteHostname = ip2hostDict[remoteIP]
+				if 'Timeout' in errorCollectDict['error']:
+					errorCollectDict['error']['Timeout'].append(remoteHostname)
+				else:
+					errorCollectDict['error']['Timeout'] = [remoteHostname]
+				sock.close()
+			break
+
+		for sock in writable:
+			sock.send(encryptMsg)
+			writeSockList.remove(sock)
+
+		for sock in readable:
+			data = yaml.load(sock.recv(9999).decode('utf8').strip())
+
+			# collectDict:
+			#   cmdOutput1: [host1, host2, ...]
+			#   cmdOutput2: [host1, host2, ...]
+			#   ...
+			if not isinstance(data, dict):
+				print(data)
+			for host in data.keys():
+				cmdOutput = data[host]
+				if cmdOutput in collectDict:
+					collectDict[cmdOutput].append(host)
+				else:
+					collectDict[cmdOutput] = [host]
+
+			socks.remove(sock)
+			sock.close() 
+
+
+
+
+# Parse command line options
+parser = argparse.ArgumentParser(prog=Script,
+				description="Run command on remote host",
+				usage=help())
+parser.add_argument('-r', '--range', metavar='RangeExpr', help='Specify remote hosts, support range expr')
+parser.add_argument('-p', '--parallel', metavar='NUM', help='Specify max parallel number, default is 4')
+parser.add_argument('-P', '--port', metavar='PORT', help='Specify proxy port')
+parser.add_argument('-t', '--timeout', metavar='TIMEOUT_S', help='Specify a time-out as a floating point number in seconds, default is 120')
+parser.add_argument('command', metavar='COMMAND', help='Specify command that need run on remote host')
+args = parser.parse_args()
+
+if args.range is None:
+	help(False)
+	exit(1)
+
+hostsList = range2list(args.range)
+hostsNum = len(hostsList)
+command = args.command
+
+Ren.load.THIS = 'proxy'
+confDict = load()
+
+port = int(args.port) if args.port else confDict['port']
+separator1 = confDict['sep1'].encode()
+separator2 = confDict['sep2']
+DEFAULT_PARALLEL_NUM = confDict['parallel']
+DEFAULT_TIMEOUT_S = confDict['timeout']
+portCheckTimeout = confDict['portCkTimeout']
+
+parallelNum = int(args.parallel) if args.parallel else DEFAULT_PARALLEL_NUM
+timeout_s = float(args.timeout) if args.timeout else DEFAULT_TIMEOUT_S
+
+
+logname = os.getlogin()
+hostname = socket.gethostname()
+now_epoch = datetime.datetime.now().strftime('%s')
+
+# message format ('/' is separator):
+#   loguser@host/epoch_time/command
+message = "{0}@{1}{2}{3}{2}{4}".format(logname, hostname, separator2, now_epoch, command)
+
+# Generate signature
+signature = sign(message.encode())
+if signature is None:
+	print("Error: Signature is None")
+	exit(1)
+	
+sendMsg = signature + separator1 + message.encode()
+
+ip2hostDict = {}
+resDict = {'mesg': {}}
+collectDict = dict()
+errorCollectDict = {'error': {}}
+errorDict = {'error': {}}
+
+threads = []
+# Start the thread
+for i in range(parallelNum):
+	partHostsList = [hostsList[x] for x in range(i, hostsNum, parallelNum)]
+	if partHostsList:
+		t = threading.Thread(target=runOnRemote, args=(partHostsList, port, sendMsg))
+		threads.append(t)
+		t.start()
+
+# Join the thread
+for thread in threads:
+	thread.join()
+
+
+# Arrange collectDict into resDict
+# resDict:
+#   mesg:
+#     hostsRange1[m]: cmdOutput1
+#     hostsRange2[n]: cmdOutput2
+#     ...
+for cmdOutput in collectDict:
+	hostsList = collectDict[cmdOutput]
+	hostsNum = len(hostsList)
+	hostsRange = list2range(hostsList)
+	key = '{0}[{1}]'.format(hostsRange, hostsNum)
+	resDict['mesg'][key] = cmdOutput
+
+# Arrange errorCollectDict into errorDict
+# errorDict:
+#   error:
+#     hostsRange1[m]: errMsg1
+#     hostsRange2[n]: errMsg2
+#     ...
+for errMsg in errorCollectDict['error']:
+	hostsList = errorCollectDict['error'][errMsg]
+	hostsNum = len(hostsList)
+	hostsRange = list2range(hostsList)
+	key = '{0}[{1}]'.format(hostsRange, hostsNum)
+	errorDict['error'][key] = errMsg
+
+# Show error message if have
+if errorDict['error']:
+	dict2yaml_noblank(errorDict)
+
+# Show result in yaml format
+if resDict['mesg']:
+	dict2yaml_noblank(resDict)
