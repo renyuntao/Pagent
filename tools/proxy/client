@@ -79,7 +79,7 @@ def runOnRemote(hostsList, port, encryptMsg):
 			writeSockList.remove(sock)
 
 		for sock in readable:
-			data = yaml.load(sock.recv(9999).decode('utf8').strip())
+			data = yaml.load(sock.recv(maxRecv).decode('utf8').strip())
 
 			# collectDict:
 			#   cmdOutput1: [host1, host2, ...]
@@ -128,6 +128,7 @@ separator2 = confDict['sep2']
 DEFAULT_PARALLEL_NUM = confDict['parallel']
 DEFAULT_TIMEOUT_S = confDict['timeout']
 portCheckTimeout = confDict['portCkTimeout']
+maxRecv = confDict['maxRecv']
 
 parallelNum = int(args.parallel) if args.parallel else DEFAULT_PARALLEL_NUM
 timeout_s = float(args.timeout) if args.timeout else DEFAULT_TIMEOUT_S
