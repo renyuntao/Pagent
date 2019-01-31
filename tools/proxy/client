@@ -59,7 +59,7 @@ def runOnRemote(hostsList, port, encryptMsg):
 	readSockList = socks[:]
 	writeSockList = socks[:]
 
-	while socks:
+	while readSockList or writeSockList:
 		readable, writable, exceptional = select.select(readSockList, writeSockList, [], timeout_s)
 
 		# Timeout
@@ -94,7 +94,7 @@ def runOnRemote(hostsList, port, encryptMsg):
 				else:
 					collectDict[cmdOutput] = [host]
 
-			socks.remove(sock)
+			readSockList.remove(sock)
 			sock.close() 
 
 
