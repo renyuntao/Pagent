@@ -41,11 +41,25 @@ def dict2yaml(dict_):
 	if bool(dict_):
 		print(yaml.dump(dict_, default_flow_style=False, allow_unicode=True), end='')
 
-# Dump dict to yaml and remove empty line in output
-def dict2yaml_noblank(dict_):
+# Feature:
+#   - Dump dict to yaml and remove empty line in output
+#   - Convert dict value to dict type if `stringValue` is False
+def dict2yaml_noblank(dict_, stringValue=False):
 	print("---")
 
 	if bool(dict_):
+		if not stringValue:
+			for k in dict_['mesg']:
+				if dict_['mesg'][k].startswith("---\n- !!perl/hash:Service2\n  "):
+					# Remove perl-specific tags
+					dict_['mesg'][k] = dict_['mesg'][k].replace('!!perl/hash:Service2\n  ','')
+
+				# If load error, then do nothing
+				try:
+					dict_['mesg'][k] = yaml.load(dict_['mesg'][k])
+				except yaml.scanner.ScannerError:
+					pass
+
 		output = yaml.dump(dict_, default_flow_style=False, allow_unicode=True)
 		output = os.linesep.join([s for s in output.splitlines() if s])
 		print(output)

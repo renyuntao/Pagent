@@ -25,7 +25,7 @@ from Ren.proxy import sign, verify
 
 
 def help(wantReturn=True):
-	usage = """ %(prog)s [--port PORT] [--parallel NUM] [--timeout TIMEOUT] -r 'rangeExpr' 'COMMAND'
+	usage = """ %(prog)s [--port PORT] [--parallel NUM] [--timeout TIMEOUT] [--string-value] -r 'rangeExpr' 'COMMAND'
 	%(prog)s -h"""
 
 	if wantReturn:
@@ -43,8 +43,16 @@ def runOnRemote(hostsList, port, encryptMsg):
 		sock.settimeout(portCheckTimeout)
 
 		# Store ip:host key-value in dictionary
-		ip = socket.gethostbyname(host)
-		ip2hostDict[ip] = host
+		try:
+			ip = socket.gethostbyname(host)
+			ip2hostDict[ip] = host
+		except socket.gaierror:
+			if 'Host Not Found' in errorCollectDict['error']:
+				errorCollectDict['error']['Host Not Found'].append(host)
+			else:
+				errorCollectDict['error']['Host Not Found'] = [host]
+			sock.close()
+			continue
 
 		result = sock.connect_ex((host, port))
 		if result != 0:
@@ -107,6 +115,7 @@ parser = argparse.ArgumentParser(prog=Script,
 parser.add_argument('-r', '--range', metavar='RangeExpr', help='Specify remote hosts, support range expr')
 parser.add_argument('-p', '--parallel', metavar='NUM', help='Specify max parallel number, default is 4')
 parser.add_argument('-P', '--port', metavar='PORT', help='Specify proxy port')
+parser.add_argument('-s', '--string-value', action='count', help="Don't convert string to dict, use string value")
 parser.add_argument('-t', '--timeout', metavar='TIMEOUT_S', help='Specify a time-out as a floating point number in seconds, default is 120')
 parser.add_argument('command', metavar='COMMAND', help='Specify command that need run on remote host')
 args = parser.parse_args()
@@ -137,6 +146,27 @@ timeout_s = float(args.timeout) if args.timeout else DEFAULT_TIMEOUT_S
 logname = os.getlogin()
 hostname = socket.gethostname()
 now_epoch = datetime.datetime.now().strftime('%s')
+
+# User limit
+userlimitConf = os.path.join(confDict['conf'], 'user.limit')
+userlimitDict = Ren.tools.load(userlimitConf)
+if logname not in userlimitDict:
+	print("Permission Deny: You have no permission to use {0}".format(Script))
+	exit(1)
+if userlimitDict[logname] < hostsNum:
+	print("[FAIL]The user {0} is limited.".format(logname))
+	exit(1)
+
+# Check if need user confirm
+needConfirmNum = confDict['needConfirmNum']
+if hostsNum >= needConfirmNum:
+	#print("Are you sure you want to run this command [y/n]:", end='')
+	userInput = ""
+	while userInput != "y":
+		userInput = input("Are you sure you want to run this command [y/n]:")
+		if userInput == "n":
+			exit(0)
+
 
 # message format ('/' is separator):
 #   loguser@host/epoch_time/command
@@ -202,4 +232,5 @@ if errorDict['error']:
 
 # Show result in yaml format
 if resDict['mesg']:
-	dict2yaml_noblank(resDict)
+	stringValue = True if args.string_value else False
+	dict2yaml_noblank(resDict, stringValue)
