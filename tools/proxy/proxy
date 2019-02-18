@@ -7,22 +7,14 @@
 
 import os
 import sys
-import socket
-import tempfile
 import datetime
-import subprocess
-from Ren.tools import dict2yaml
 from Ren.load import load
-from Ren.proxy import verify
-
+from Ren.proxy import verify, run
 
 confDict = load()
 separator1 = confDict['sep1'].encode()
 separator2 = confDict['sep2']
 maxRead = confDict['maxRead']
-
-mesg = dict()
-localHostName = socket.gethostname()
 
 recvData = os.read(0, maxRead)
 try:
@@ -41,8 +33,9 @@ if not verify(signature, message):
 
 try:
 	message = message.decode().strip()
-	logname, host = message.split(separator2)[0].split('@')
-	command = message.split(separator2)[2]
+	remoteTime = int(message.split(separator2)[0])
+	argv = message.split(separator2)[1]
+
 except ValueError:
 	print("============ ERROR ============", file=sys.stderr)
 	print("Split error with separator2.", file=sys.stderr)
@@ -50,39 +43,11 @@ except ValueError:
 	print("===============================", file=sys.stderr)
 	exit(1)
 
-
-print("============ SUMMARY ============", file=sys.stderr)
-print("{0:20} {1}".format('Logname:', logname), file=sys.stderr)
-print("{0:20} {1}".format('RemoteHost:', host), file=sys.stderr)
-print("{0:20} {1}".format('Command:', command), file=sys.stderr)
-
+# Check Timestamp
 localTime = int(datetime.datetime.now().strftime('%s'))
-remoteTime = int(message.split(separator2)[1])
 if abs(localTime - remoteTime) > int(confDict['maxTimeDiff']):
 	print("WARNING: Exceed max time diff.", file=sys.stderr)
 	print("localTime: {0}  remoteTime: {1}".format(localTime, remoteTime), file=sys.stderr)
 	exit(1)
 
-# Put command into a temporary file (Solve redirect not working problem)
-tmpObj = tempfile.NamedTemporaryFile(delete=False)
-tmpfile = tmpObj.name
-tmpObj.write(command.encode())
-tmpObj.close()
-print("{0:20} {1}".format("Temporay File:", tmpfile), file=sys.stderr)
-
-try:
-	mesg[localHostName] = subprocess.check_output("/bin/bash {0}".format(tmpfile), shell=True).decode('utf8').strip()
-	print("Command output:", file=sys.stderr)
-	print(mesg[localHostName], file=sys.stderr)
-except subprocess.CalledProcessError as e:
-	print("Command stderr:", file=sys.stderr)
-	print(e, file=sys.stderr)
-	print(e.__dict__, file=sys.stderr)
-	mesg[localHostName] = None
-print("=================================", file=sys.stderr)
-
-# Remove temporary file
-os.remove(tmpfile)
-
-# Return command output
-dict2yaml(mesg)
+run(argv)

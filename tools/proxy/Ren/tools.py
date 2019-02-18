@@ -46,23 +46,31 @@ def dict2yaml(dict_):
 #   - Convert dict value to dict type if `stringValue` is False
 def dict2yaml_noblank(dict_, stringValue=False):
 	print("---")
+    if bool(dict_):
+        if not stringValue and 'mesg' in dict_:
+            for k in dict_['mesg']:
+                if dict_['mesg'][k] is not None:
+                    if dict_['mesg'][k].startswith("---\n- !!perl/hash:Service2\n  "):
+                        # Remove perl-specific tags
+                        dict_['mesg'][k] = dict_['mesg'][k].replace('!!perl/hash:Service2\n  ','')
 
-	if bool(dict_):
-		if not stringValue:
-			for k in dict_['mesg']:
-				if dict_['mesg'][k].startswith("---\n- !!perl/hash:Service2\n  "):
-					# Remove perl-specific tags
-					dict_['mesg'][k] = dict_['mesg'][k].replace('!!perl/hash:Service2\n  ','')
+                    # Do this step when encountered the following situation
+                    #   app: some thing
+                    #   ---
+                    #   curl: some thing
+                    #   hdfs: some thing
+                    if dict_['mesg'][k].find('\n---\n') != -1:
+                        dict_['mesg'][k] = dict_['mesg'][k].replace('\n---\n', '\n')
 
-				# If load error, then do nothing
-				try:
-					dict_['mesg'][k] = yaml.load(dict_['mesg'][k])
-				except yaml.scanner.ScannerError:
-					pass
+                    # If load error, then do nothing
+                    try:
+                        dict_['mesg'][k] = yaml.load(dict_['mesg'][k])
+                    except yaml.scanner.ScannerError:
+                        pass
 
-		output = yaml.dump(dict_, default_flow_style=False, allow_unicode=True)
-		output = os.linesep.join([s for s in output.splitlines() if s])
-		print(output)
+        output = yaml.dump(dict_, default_flow_style=False, allow_unicode=True)
+        output = os.linesep.join([s for s in output.splitlines() if s])
+        print(output)
 
 
 # Convert range expr to python list

@@ -73,3 +73,12 @@ def verify(sign, message):
 		return False
 
 	return True
+
+# Run plugin code
+def run(argv):
+	argvDict = yaml.load(argv)
+	code = argvDict['code']
+
+	confDict = load()
+	codefile = os.path.join(confDict['code'], code)
+	exec(open(codefile).read(), argvDict)

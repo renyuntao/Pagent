@@ -1,0 +1,49 @@
+# Plugin: Run command and return stdout
+
+import os
+import sys
+import yaml
+import socket
+import tempfile
+import subprocess
+from Ren.tools import dict2yaml
+
+# Variable:
+#   user: logname
+#   host: remote hostname
+#   code: code file
+#   command: command to run
+
+mesg = dict()
+localHostName = socket.gethostname()
+
+print("============ SUMMARY ============", file=sys.stderr)
+print("{0:20} {1}".format('Logname:', user), file=sys.stderr)
+print("{0:20} {1}".format('RemoteHost:', host), file=sys.stderr)
+print("{0:20} {1}".format('Code:', code), file=sys.stderr)
+print("{0:20} {1}".format('Command:', command), file=sys.stderr)
+
+# Put command into a temporary file (Solve redirect not working problem)
+tmpObj = tempfile.NamedTemporaryFile(delete=False)
+tmpfile = tmpObj.name
+command += "\nexit 0"
+tmpObj.write(command.encode())
+tmpObj.close()
+print("{0:20} {1}".format("Temporay File:", tmpfile), file=sys.stderr)
+
+try:
+    mesg[localHostName] = subprocess.check_output("/bin/bash {0}".format(tmpfile), shell=True).decode('utf8').strip()
+    print("Command output:", file=sys.stderr)
+    print(mesg[localHostName], file=sys.stderr)
+except subprocess.CalledProcessError as e:
+    print("Command stderr:", file=sys.stderr)
+    print(e, file=sys.stderr)
+    print(e.__dict__, file=sys.stderr)
+    mesg[localHostName] = None
+print("=================================", file=sys.stderr)
+
+# Remove temporary file
+os.remove(tmpfile)
+
+# Return command output
+dict2yaml(mesg)

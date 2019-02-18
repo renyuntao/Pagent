@@ -6,6 +6,9 @@
 #   __file__  -r 'hostsRange' 'COMMAND'
 #   __file__  -h
 #
+# Data Format:
+#   signature||||||||||timestamp??????????argv
+#
 # Date:
 #   - 2019-01-24
 #     v1.0
@@ -94,7 +97,8 @@ def runOnRemote(hostsList, port, encryptMsg):
 			#   cmdOutput2: [host1, host2, ...]
 			#   ...
 			if not isinstance(data, dict):
-				print(data)
+				print("data is not dict:", data)
+				exit(0)
 			for host in data.keys():
 				cmdOutput = data[host]
 				if cmdOutput in collectDict:
@@ -169,8 +173,12 @@ if hostsNum >= needConfirmNum:
 
 
 # message format ('/' is separator):
-#   loguser@host/epoch_time/command
-message = "{0}@{1}{2}{3}{2}{4}".format(logname, hostname, separator2, now_epoch, command)
+#   timestamp/argv
+argv = """user: {0}
+host: {1}
+code: exec
+command: {2}""".format(logname, hostname, command)
+message = now_epoch + separator2 + argv
 
 # Generate signature
 signature = sign(message.encode())
